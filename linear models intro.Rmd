@@ -75,6 +75,84 @@ so our model has changed!
 
 ## Diagnostics
 ```{r}
+modelr::add_residuals(nyc_airbnb, fit) %>% 
+  ggplot(aes(x = boro, y = resid)) +
+  geom_violin() +
+  ylim(-500, 500)
 
+modelr::add_residuals(nyc_airbnb, fit) %>% 
+  ggplot(aes(x = stars, y = resid)) +
+  geom_point() +
+  ylim(-500, 500)
+```
+
+# Hypothesis Testing
+```{r}
+fit_null = lm(price ~ stars + boro, data = nyc_airbnb)
+fit_alt = lm(price ~ stars + boro + room_type, data = nyc_airbnb)
+
+anova(fit_null, fit_alt) %>% 
+  broom::tidy()
+```
+
+## Nesting Data
+How can we run a regression to predict price by stars & room type,
+but differentiate by borough?  
+First how to do this with interaction terms (not great)
+```{r}
+nyc_airbnb %>% 
+  lm(price ~ stars * boro + room_type * boro, data = .) %>% 
+  broom::tidy() %>% 
+  knitr::kable(digits = 3)
+```
+
+Look at just Brooklyn
+```{r}
+nyc_airbnb %>% 
+  filter(boro == "Brooklyn") %>% 
+  lm(price ~ stars + room_type, data = .) %>% 
+  broom::tidy()
+```
+
+If we nest the dataset, so we have a separate dataset for each borough
+then we can do a separate regression in each 
+Let's try using nest and map
+```{r}
+nest_lm_res =
+  nyc_airbnb %>% 
+  nest(data = -boro) %>% 
+  mutate(models = map(data, ~lm(price ~ stars + room_type, data = .x)),
+         models = map(models, broom::tidy)) %>% 
+  select(-data) %>% 
+  unnest(models)
+
+nest_lm_res %>% 
+  select(boro, term, estimate) %>% 
+  mutate(term = fct_inorder(term)) %>% 
+  pivot_wider(
+    names_from = term, values_from = estimate) %>% 
+  knitr::kable(digits = 3)
+```
+
+### Another example
+```{r}
+manhattan_airbnb = #only manhattan data
+  nyc_airbnb %>% 
+  filter(boro == "Manhattan")
+
+manhattan_nest_lm_res =
+  manhattan_airbnb %>% 
+  nest(data = -neighborhood) %>% #nest by neighborhood
+  mutate(models = map(data, ~lm(price ~ stars + room_type, data = .x)),
+         models = map(models, broom::tidy)) %>% 
+  select(-data) %>% 
+  unnest(models)
+
+manhattan_nest_lm_res %>% 
+  filter(str_detect(term, "room_type")) %>% 
+  ggplot(aes(x = neighborhood, y = estimate)) + 
+  geom_point() + 
+  facet_wrap(~term) + 
+  theme(axis.text.x = element_text(angle = 80, hjust = 1))
 ```
 
