@@ -1,0 +1,80 @@
+---
+title: "Linear Models Intro"
+author: "Alison Elgass"
+date: "11/7/2019"
+output: github_document
+---
+
+```{r}
+library(tidyverse)
+library(p8105.datasets)
+
+set.seed(1)
+```
+
+Ah yes our good friend air bnb data
+```{r}
+data("nyc_airbnb")
+
+nyc_airbnb = 
+  nyc_airbnb %>% 
+  mutate(stars = review_scores_location / 2) %>% 
+  rename(
+    boro = neighbourhood_group,
+    neighborhood = neighbourhood) %>% 
+  filter(boro != "Staten Island") %>% 
+  select(price, stars, boro, neighborhood, room_type)
+
+```
+
+## Fit our first linear model!
+```{r}
+fit = lm(price ~ stars + boro, data = nyc_airbnb)
+#automatically picks
+
+summary(fit)
+summary(fit)$coef
+coef(fit)
+```
+Note that  
+1. R automatically picks Bronx as reference category
+2. Stars estimate = 32, i.e. $32 price hike for every 1 star increase  
+  
+Now just tidy the results a bit
+```{r}
+fit %>% 
+  broom::tidy() %>% 
+  mutate(term = str_replace(term, "boro", "Boro: ")) %>% 
+  knitr::kable(digits = 2)
+
+fit %>% 
+  broom::glance() #also an option
+```
+
+### Take a look at factors, change ref category
+```{r}
+nyc_airbnb = 
+  nyc_airbnb %>% 
+  mutate(
+    boro = fct_infreq(boro), #order by frequency
+    room_type = fct_infreq(room_type))
+
+str(nyc_airbnb)
+
+#Re-fit the linear model
+fit = lm(price ~ stars + boro, data = nyc_airbnb)
+
+fit %>% 
+  broom::tidy() %>% 
+  mutate(term = str_replace(term, "boro", "Boro: ")) %>% 
+  knitr::kable(digits = 2)
+```
+
+Now our reference category is Manhattan (the most frequent), 
+so our model has changed!
+
+## Diagnostics
+```{r}
+
+```
+
