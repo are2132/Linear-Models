@@ -1,0 +1,127 @@
+---
+title: "Bootstrap"
+author: "Alison Elgass"
+date: "11/14/2019"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(p8105.datasets)
+
+set.seed(1)
+```
+
+## Start with data
+Let’s create some simulated data.  
+First generate x and an error sampled from a normal distribution, 
+then a response y; this all gets stored in sim_df_const.  
+  
+Then I’ll modify this by multiplying the errors by a term that involves x, and create a new response variable y.
+```{r}
+n_samp = 250
+
+sim_df_const = 
+  tibble(
+    x = rnorm(n_samp, 1, 1),
+    error = rnorm(n_samp, 0, 1),
+    y = 2 + 3 * x + error
+  )
+
+sim_df_nonconst = sim_df_const %>% 
+  mutate(
+    error = error * .75 * x,
+    y = 2 + 3 * x + error
+)
+```
+
+What if we run a linear regression on each dataset (n = 250)
+```{r}
+lm(y ~ x, data = sim_df_const) %>%    #dataset 1
+  broom::tidy() %>% 
+  knitr::kable(digits = 3)
+
+lm(y ~ x, data = sim_df_nonconst) %>% #dataset 2
+  broom::tidy() %>% 
+  knitr::kable(digits = 3)
+```
+
+
+# Bootstrapping
+Now write a function to take bootstrap samples  
+_REMEMBER_* a bootstrap sample is the same n, **with** replacement  
+so we will get a different sample, will likely have repeats
+```{r}
+boot_sample = function(df) {
+  sample_frac(df, replace = TRUE)
+}
+```
+
+Try it with our dataset we made, then plot
+```{r}
+boot_sample(sim_df_nonconst) %>% 
+  ggplot(aes(x = x, y = y)) + 
+  geom_point(alpha = .5) +
+  stat_smooth(method = "lm")
+```
+
+Now do it many times and store in **list columns**   
+(so we take a bootstrap sample of n = 250, 1000 times)
+```{r}
+boot_straps = 
+  data_frame(
+    strap_number = 1:1000,
+    strap_sample = rerun(1000, boot_sample(sim_df_nonconst))
+  )
+```
+
+### Do some kind of analysis....
+```{r}
+#for each strap_sample df, run a linear regression
+bootstrap_results = boot_straps %>% 
+  mutate(
+    models = map(strap_sample, ~lm(y ~ x, data = .x)),
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(-strap_sample, -models) %>% #we only care about 'results'
+  unnest(results)
+```
+So we end up with 1,000 models (2,000 columns: beta0 and beta1), each
+generated from a single bootstrap sample of n = 250
+
+
+### Summarize the results
+```{r}
+bootstrap_results %>% 
+  group_by(term) %>% 
+  summarize(se = sd(estimate)) #sd of our 1,000 b0's and b1's
+```
+
+Compare this to origingal model from nonconst data (just 1 sample)
+```{r}
+lm(y ~ x, data = sim_df_nonconst) %>% 
+  broom::tidy() %>% 
+  knitr::kable(digits = 3)
+```
+
+
+# Bootstrap with modelr package
+```{r}
+boot_straps = 
+  sim_df_nonconst %>% 
+  modelr::bootstrap(n = 1000)
+```
+Wow so nice and easy!!!!!!!!!!!!
+
+```{r}
+sim_df_nonconst %>% 
+  modelr::bootstrap(n = 1000) %>% 
+  mutate(
+    models = map(strap, ~lm(y ~ x, data = .x) ),
+    results = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results) %>% 
+  group_by(term) %>% 
+  summarize(boot_se = sd(estimate))
+```
+
